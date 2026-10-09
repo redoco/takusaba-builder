@@ -108,7 +108,7 @@ const semverGt = (a: string, b: string): boolean => {
 const checkMacUpdate = async () => {
     setUpdateState({ status: 'checking' });
     try {
-        const res = await fetch('https://api.github.com/repos/reverinudog/takusaba-builder/releases/latest', {
+        const res = await fetch('https://api.github.com/repos/redoco/takusaba-builder/releases/latest', {
             headers: { 'User-Agent': 'takusaba-builder', 'Accept': 'application/vnd.github+json' }
         });
         if (!res.ok) throw new Error(`GitHub API ${res.status}`);

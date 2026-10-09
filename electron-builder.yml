@@ -2,7 +2,7 @@ appId: com.github.reverinudog.takusababuilder
 productName: 卓鯖ビルダー
 publish:
   provider: github
-  owner: reverinudog
+  owner: redoco
   repo: takusaba-builder
 directories:
   output: release

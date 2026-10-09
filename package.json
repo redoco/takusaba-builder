@@ -1,6 +1,6 @@
 {
   "name": "takusaba-builder",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "プリセットからまとめて作成する卓鯖ビルダー",
   "main": "build/main.cjs",
   "author": "reverinudog",
@@ -44,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/reverinudog/takusaba-builder"
+    "url": "https://github.com/redoco/takusaba-builder"
   },
-  "homepage": "https://github.com/reverinudog/takusaba-builder"
+  "homepage": "https://github.com/redoco/takusaba-builder"
 }

@@ -21,7 +21,7 @@ export type UpdateState = {
     releaseUrl: string;
 };
 
-const RELEASE_URL = 'https://github.com/reverinudog/takusaba-builder/releases/latest';
+const RELEASE_URL = 'https://github.com/redoco/takusaba-builder/releases/latest';
 
 let state: UpdateState = {
     status: 'idle',

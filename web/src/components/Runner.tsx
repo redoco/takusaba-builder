@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
-import { Play, Search, Bug, Check, ArrowRight, Hash, Volume2, Lock, ExternalLink } from 'lucide-react';
+import { Play, Search, Bug, Check, ArrowRight, Hash, Volume2, Lock, ExternalLink, Shield } from 'lucide-react';
 import type { Preset } from '../types';
 import * as api from '../api';
 import Button from '../ui/Button';
@@ -8,6 +8,8 @@ import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import Field from '../ui/Field';
 import PresetPicker from './PresetPicker';
+import RolePlanner from './RolePlanner';
+import { charNumber, clampRoleName, type CharacterDraft, type Tier } from './roleNames';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
 import Badge from '../ui/Badge';
@@ -16,6 +18,34 @@ import Callout from '../ui/Callout';
 import { useToast } from '../ui/toastContext';
 import { useI18n, apiErrMsg } from '../i18n';
 import styles from './Runner.module.css';
+
+// 絵文字・作る位置・ON/OFF はこの PC に覚えておく（卓ごとに変えたいもの以外）
+const ROLE_PREFS_KEY = 'takusaba.rolePrefs';
+type RolePrefs = { enabled: boolean, emoji: string, anchorRoleId: string };
+const loadRolePrefs = (): RolePrefs => {
+    try {
+        const v = JSON.parse(localStorage.getItem(ROLE_PREFS_KEY) ?? 'null');
+        if (v && typeof v === 'object') {
+            return {
+                enabled: v.enabled === true,
+                emoji: typeof v.emoji === 'string' ? v.emoji : '🍎',
+                anchorRoleId: typeof v.anchorRoleId === 'string' ? v.anchorRoleId : ''
+            };
+        }
+    } catch { /* ignore */ }
+    return { enabled: false, emoji: '🍎', anchorRoleId: '' };
+};
+const saveRolePrefs = (p: RolePrefs) => {
+    try { localStorage.setItem(ROLE_PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+};
+
+const charactersFromPreset = (preset: Preset | undefined): CharacterDraft[] =>
+    (preset?.roleCharacters ?? []).map(c => ({
+        id: crypto.randomUUID(),
+        name: c.name,
+        channelKey: c.channelKey && preset?.channels.some(ch => ch.key === c.channelKey && ch.isHidden) ? c.channelKey : '',
+        memberId: ''
+    }));
 
 export default function Runner({ guildId }: { guildId: string }) {
     const toast = useToast();
@@ -30,6 +60,22 @@ export default function Runner({ guildId }: { guildId: string }) {
     const [filterText, setFilterText] = useState('');
     const [debugLog, setDebugLog] = useState<string | null>(null);
 
+    // Roles
+    const initialPrefs = useMemo(loadRolePrefs, []);
+    const [rolesEnabled, setRolesEnabled] = useState(initialPrefs.enabled);
+    const [roleEmoji, setRoleEmoji] = useState(initialPrefs.emoji);
+    const [anchorRoleId, setAnchorRoleId] = useState(initialPrefs.anchorRoleId);
+    const [tiers, setTiers] = useState<Record<string, Tier>>({});
+    const [characters, setCharacters] = useState<CharacterDraft[]>([]);
+    const [guildRoles, setGuildRoles] = useState<api.GuildRoles | null>(null);
+    const [rolesLoading, setRolesLoading] = useState(false);
+    const [savingChars, setSavingChars] = useState(false);
+    const [roleTouched, setRoleTouched] = useState(false);
+
+    useEffect(() => {
+        saveRolePrefs({ enabled: rolesEnabled, emoji: roleEmoji, anchorRoleId });
+    }, [rolesEnabled, roleEmoji, anchorRoleId]);
+
     // UI State
     const [loading, setLoading] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
@@ -38,6 +84,29 @@ export default function Runner({ guildId }: { guildId: string }) {
     useEffect(() => {
         loadData();
     }, []);
+
+    const loadRoles = async () => {
+        setRolesLoading(true);
+        try {
+            setGuildRoles(await api.getRoles());
+        } catch (e) {
+            toast(errMsg(e), 'error');
+        } finally {
+            setRolesLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (rolesEnabled && !guildRoles && !rolesLoading) loadRoles();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rolesEnabled]);
+
+    // 覚えていた「作る位置」のロールが消えていたら一番下に戻す
+    useEffect(() => {
+        if (guildRoles && anchorRoleId && !guildRoles.roles.some(r => r.id === anchorRoleId && r.selectable)) {
+            setAnchorRoleId('');
+        }
+    }, [guildRoles, anchorRoleId]);
 
     const loadData = async () => {
         setLoading(true);
@@ -63,9 +132,11 @@ export default function Runner({ guildId }: { guildId: string }) {
             if (ids.length > 0) access[ch.key] = ids;
         }
         try {
-            const res = await api.runCreate(selectedPresetId, categoryName, Array.from(selectedMembers), access);
+            const roles = roleItems ? { items: roleItems, anchorRoleId: anchorRoleId || null } : null;
+            const res = await api.runCreate(selectedPresetId, categoryName, Array.from(selectedMembers), access, roles);
             setResult(res);
             setShowConfirm(false);
+            if (roles) loadRoles();
         } catch (e) {
             toast(errMsg(e), 'error');
         } finally {
@@ -84,6 +155,7 @@ export default function Runner({ guildId }: { guildId: string }) {
                 access[k] = ns;
             }
             setHiddenAccess(access);
+            setCharacters(characters.map(c => (c.memberId === id ? { ...c, memberId: '' } : c)));
         } else {
             newSet.add(id);
         }
@@ -104,13 +176,15 @@ export default function Runner({ guildId }: { guildId: string }) {
     // Validation
     const isPresetValid = !!selectedPresetId;
     const isCategoryValid = !!categoryName.trim();
-    const isValid = isPresetValid && isCategoryValid;
+    const isRolesValid = !rolesEnabled || !!roleEmoji.trim();
+    const isValid = isPresetValid && isCategoryValid && isRolesValid;
 
     // Touched state to show errors only after interaction or attempt
     const [touched, setTouched] = useState({ preset: false, category: false });
 
     const handleConfirmClick = () => {
         setTouched({ preset: true, category: true });
+        setRoleTouched(true);
         if (isValid) setShowConfirm(true);
     };
 
@@ -126,6 +200,51 @@ export default function Runner({ guildId }: { guildId: string }) {
 
     const avatarUrl = (m: api.Member) =>
         m.avatar ? `https://cdn.discordapp.com/avatars/${m.id}/${m.avatar}.png` : null;
+
+    // ---- ロール名の組み立て：{絵文字}GM / {絵文字}PL / {絵文字}観戦 / {絵文字}⑴アダム ----
+    const emoji = roleEmoji.trim();
+    const namedChars = characters.filter(c => c.name.trim());
+    const tierOf = (id: string): Tier => tiers[id] ?? 'pl';
+    const roleItems: api.RoleItem[] | null = rolesEnabled && emoji ? [
+        { kind: 'gm', name: clampRoleName(`${emoji}GM`), memberIds: selectedMemberList.filter(m => tierOf(m.id) === 'gm').map(m => m.id) },
+        { kind: 'pl', name: clampRoleName(`${emoji}PL`), memberIds: selectedMemberList.filter(m => tierOf(m.id) === 'pl').map(m => m.id) },
+        { kind: 'watch', name: clampRoleName(`${emoji}${t('run.roles.watchName')}`), memberIds: selectedMemberList.filter(m => tierOf(m.id) === 'watch').map(m => m.id) },
+        ...namedChars.map((c, i): api.RoleItem => ({
+            kind: 'character',
+            name: clampRoleName(`${emoji}${charNumber(i)}${c.name.trim()}`),
+            memberIds: c.memberId && selectedMembers.has(c.memberId) ? [c.memberId] : [],
+            ...(c.channelKey && hiddenChannels.some(h => h.key === c.channelKey) ? { channelKey: c.channelKey } : {})
+        }))
+    ] : null;
+
+    const emojiInUse = useMemo(() => {
+        if (!rolesEnabled || !emoji || !guildRoles) return null;
+        const hit = guildRoles.roles.find(r => r.name === `${emoji}GM` || r.name === `${emoji}PL`);
+        return hit?.name ?? null;
+    }, [rolesEnabled, emoji, guildRoles]);
+
+    const anchorName = anchorRoleId ? guildRoles?.roles.find(r => r.id === anchorRoleId)?.name : null;
+
+    const saveCharactersToPreset = async () => {
+        if (!selectedPreset) return;
+        setSavingChars(true);
+        try {
+            const updated: Preset = {
+                ...selectedPreset,
+                roleCharacters: namedChars.map(c => ({
+                    name: c.name.trim(),
+                    ...(c.channelKey ? { channelKey: c.channelKey } : {})
+                }))
+            };
+            const res = await api.savePreset(updated);
+            setPresets(presets.map(p => (p.presetId === updated.presetId ? res.preset : p)));
+            toast(t('run.roles.charSaved'), 'success');
+        } catch (e) {
+            toast(errMsg(e), 'error');
+        } finally {
+            setSavingChars(false);
+        }
+    };
 
     return (
         <div className={styles.page}>
@@ -143,6 +262,7 @@ export default function Runner({ guildId }: { guildId: string }) {
                                 onChange={id => {
                                     setSelectedPresetId(id);
                                     setHiddenAccess({});
+                                    setCharacters(charactersFromPreset(presets.find(p => p.presetId === id)));
                                 }}
                                 onBlur={() => setTouched(prev => ({ ...prev, preset: true }))}
                                 invalid={touched.preset && !isPresetValid}
@@ -314,6 +434,29 @@ export default function Runner({ guildId }: { guildId: string }) {
                     </Card>
                 )}
 
+                <RolePlanner
+                    enabled={rolesEnabled}
+                    onToggle={setRolesEnabled}
+                    emoji={roleEmoji}
+                    onEmoji={setRoleEmoji}
+                    members={selectedMemberList}
+                    tiers={tiers}
+                    onTier={(id, tier) => setTiers({ ...tiers, [id]: tier })}
+                    characters={characters}
+                    onCharacters={setCharacters}
+                    onSaveCharacters={selectedPreset ? saveCharactersToPreset : undefined}
+                    savingCharacters={savingChars}
+                    hiddenChannels={hiddenChannels}
+                    guildRoles={guildRoles}
+                    rolesLoading={rolesLoading}
+                    onReloadRoles={loadRoles}
+                    anchorRoleId={anchorRoleId}
+                    onAnchor={setAnchorRoleId}
+                    preview={(roleItems ?? []).map(r => ({ name: r.name, locked: !!r.channelKey }))}
+                    emojiInUse={emojiInUse}
+                    showErrors={roleTouched}
+                />
+
                 <div className={styles.runRow}>
                     <Button size="lg" icon={<ArrowRight size={18} />} onClick={handleConfirmClick} loading={loading}>
                         {t('run.check')}
@@ -352,9 +495,31 @@ export default function Runner({ guildId }: { guildId: string }) {
                             <span className={styles.defLabel}>{t('run.confirm.members')}</span>
                             <span className={styles.defValue}>{t('run.confirm.membersVal', { n: selectedMembers.size })}</span>
                         </div>
+                        {roleItems && (
+                            <>
+                                <div className={styles.defRow}>
+                                    <span className={styles.defLabel}><Shield size={12} /> {t('run.confirm.roles')}</span>
+                                    <span className={styles.defValue}>
+                                        {roleItems.map(r => {
+                                            const who = selectedMemberList.filter(m => r.memberIds.includes(m.id)).map(memberName);
+                                            return <div key={r.name}>{r.name}{who.length > 0 ? `（${who.join(', ')}）` : ''}</div>;
+                                        })}
+                                    </span>
+                                </div>
+                                <div className={styles.defRow}>
+                                    <span className={styles.defLabel}>{t('run.confirm.rolePos')}</span>
+                                    <span className={styles.defValue}>
+                                        {anchorName ? t('run.roles.positionBelow', { name: anchorName }) : t('run.roles.positionBottom')}
+                                    </span>
+                                </div>
+                            </>
+                        )}
                         {hiddenChannels.map(ch => {
                             const allowed = hiddenAccess[ch.key] ?? new Set<string>();
-                            const names = selectedMemberList.filter(m => allowed.has(m.id)).map(memberName);
+                            const names = [
+                                ...(roleItems ?? []).filter(r => r.channelKey === ch.key).map(r => r.name),
+                                ...selectedMemberList.filter(m => allowed.has(m.id)).map(memberName)
+                            ];
                             return (
                                 <div key={ch.key} className={styles.defRow}>
                                     <span className={styles.defLabel}><Lock size={12} /> {ch.name}</span>
@@ -397,6 +562,36 @@ export default function Runner({ guildId }: { guildId: string }) {
                                     rows={6}
                                 />
                             </Callout>
+                        </>
+                    )}
+
+                    {result.roles && result.roles.length > 0 && (
+                        <>
+                            <div className={styles.sectionLabel}>{t('run.result.roles')}</div>
+                            <div className={styles.tableWrap}>
+                                <table className={styles.table}>
+                                    <thead>
+                                        <tr>
+                                            <th>{t('run.th.role')}</th>
+                                            <th>{t('run.th.roleMembers')}</th>
+                                            <th>{t('common.status')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {result.roles.map((r, i) => (
+                                            <tr key={i}>
+                                                <td>{r.name}</td>
+                                                <td>{t('run.result.roleMembers', { n: r.members })}</td>
+                                                <td>
+                                                    {r.success
+                                                        ? <Badge tone="success">{t('common.success')}</Badge>
+                                                        : <Badge tone="danger">{t('common.failure')}</Badge>}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </>
                     )}
 

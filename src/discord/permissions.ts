@@ -22,3 +22,6 @@ export const APPLICATION_FLAG_GUILD_MEMBERS = (1n << 14n) | (1n << 15n);
 
 export const hasGuildMembersIntent = (flags: bigint | number): boolean =>
     (BigInt(flags) & APPLICATION_FLAG_GUILD_MEMBERS) !== 0n;
+
+export const CONNECT = 1n << 20n;
+export const SPEAK = 1n << 21n;

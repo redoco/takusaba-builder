@@ -82,3 +82,42 @@ export const postFile = async (channelId: string, content: string, files: { name
         files: files
     });
 };
+
+export const fetchRoles = async () => {
+    const guildId = getGuildId();
+    if (!guildId) throw new Error("GUILD_ID not set");
+    return (await rest.get(Routes.guildRoles(guildId))) as any[];
+};
+
+export const createRole = async (name: string) => {
+    const guildId = getGuildId();
+    if (!guildId) throw new Error("GUILD_ID not set");
+    // permissions "0": the role grants nothing server-wide; access comes from channel overwrites.
+    return rest.post(Routes.guildRoles(guildId), {
+        body: { name, permissions: '0', mentionable: true, hoist: false }
+    });
+};
+
+export const addMemberRole = async (userId: string, roleId: string) => {
+    const guildId = getGuildId();
+    if (!guildId) throw new Error("GUILD_ID not set");
+    return rest.put(Routes.guildMemberRole(guildId, userId, roleId));
+};
+
+export const deleteRole = async (roleId: string) => {
+    const guildId = getGuildId();
+    if (!guildId) throw new Error("GUILD_ID not set");
+    return rest.delete(Routes.guildRole(guildId, roleId));
+};
+
+export const getBotMember = async (botId: string) => {
+    const guildId = getGuildId();
+    if (!guildId) throw new Error("GUILD_ID not set");
+    return (await rest.get(Routes.guildMember(guildId, botId))) as any;
+};
+
+export const setRolePositions = async (positions: { id: string, position: number }[]) => {
+    const guildId = getGuildId();
+    if (!guildId) throw new Error("GUILD_ID not set");
+    return rest.patch(Routes.guildRoles(guildId), { body: positions });
+};

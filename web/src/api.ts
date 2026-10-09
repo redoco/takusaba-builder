@@ -64,7 +64,13 @@ export const getMembers = async (limit?: number, after?: string): Promise<Member
     return request(`/guild/members?${params.toString()}`);
 };
 
-export type Category = { id: string, name: string, position: number, childCount: number, managed: boolean };
+export type Category = { id: string, name: string, position: number, childCount: number, roleCount?: number, managed: boolean };
+
+export type GuildRole = { id: string, name: string, color: number, position: number, managed: boolean, isBot: boolean, selectable: boolean };
+export type GuildRoles = { botTopPosition: number, roles: GuildRole[] };
+export const getRoles = async (): Promise<GuildRoles> => {
+    return request('/guild/roles');
+};
 export const getCategories = async (): Promise<Category[]> => {
     return request('/guild/categories');
 };
@@ -73,16 +79,27 @@ export const getDebugMembersRaw = async (): Promise<unknown> => {
     return request('/debug/members-raw');
 };
 
+export type RoleKind = 'gm' | 'pl' | 'watch' | 'character';
+export type RoleItem = { kind: RoleKind, name: string, memberIds: string[], channelKey?: string };
+export type RoleRequest = { items: RoleItem[], anchorRoleId: string | null };
+
 export type RunCreateResult = {
     category: { id: string, name: string },
     channels: { id?: string, name: string, success: boolean, error?: string }[],
+    roles?: { id?: string, name: string, kind: RoleKind, success: boolean, members: number, error?: string }[],
     errors: string[]
 };
-export const runCreate = async (presetId: string, categoryName: string, memberIds: string[], hiddenAccess: Record<string, string[]> = {}): Promise<RunCreateResult> => {
+export const runCreate = async (
+    presetId: string,
+    categoryName: string,
+    memberIds: string[],
+    hiddenAccess: Record<string, string[]> = {},
+    roles: RoleRequest | null = null
+): Promise<RunCreateResult> => {
     return request('/run/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ presetId, categoryName, memberIds, hiddenAccess })
+        body: JSON.stringify({ presetId, categoryName, memberIds, hiddenAccess, ...(roles ? { roles } : {}) })
     });
 };
 
@@ -180,11 +197,11 @@ export const applyUpdate = async (): Promise<{ ok: true }> => {
     return request('/system/update/apply', { method: 'POST' });
 };
 
-export type RunDeleteResult = { categoryId: string, success: boolean, error?: string }[];
-export const runDelete = async (categoryIds: string[]): Promise<RunDeleteResult> => {
+export type RunDeleteResult = { categoryId: string, success: boolean, error?: string, rolesDeleted?: number, roleErrors?: string[] }[];
+export const runDelete = async (categoryIds: string[], deleteRoles = false): Promise<RunDeleteResult> => {
     return request('/run/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryIds })
+        body: JSON.stringify({ categoryIds, deleteRoles })
     });
 };

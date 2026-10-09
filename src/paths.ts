@@ -7,4 +7,5 @@ export const DATA_DIR = path.join(APP_ROOT, 'data');
 export const ASSETS_DIR = path.join(DATA_DIR, 'assets');
 export const PRESETS_FILE = path.join(DATA_DIR, 'presets.json');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+export const ROLES_FILE = path.join(DATA_DIR, 'created-roles.json');
 export const WEB_DIST = process.env.SRB_WEB_DIST || path.join(__dirname, '../web/dist');

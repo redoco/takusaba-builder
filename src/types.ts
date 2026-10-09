@@ -18,11 +18,19 @@ export interface PresetPost {
     items: PresetPostItem[];
 }
 
+export interface PresetRoleCharacter {
+    name: string;
+    /** このキャラクターのロールが見られる秘匿チャンネル（PresetChannel.key） */
+    channelKey?: string;
+}
+
 export interface Preset {
     presetId: string;
     presetName: string;
     channels: PresetChannel[];
     posts: PresetPost[];
+    /** 卓を立てるときに作るキャラクターロール（⑴アダム ⑵ソフィー …） */
+    roleCharacters?: PresetRoleCharacter[];
 }
 
 export interface Asset {

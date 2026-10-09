@@ -18,6 +18,7 @@ export default function Cleaner() {
     const [categories, setCategories] = useState<api.Category[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [managedOnly, setManagedOnly] = useState(true);
+    const [deleteRoles, setDeleteRoles] = useState(true);
 
     // UI State
     const [loading, setLoading] = useState(false);
@@ -58,7 +59,7 @@ export default function Cleaner() {
         setLoading(true);
         setResult(null);
         try {
-            const res = await api.runDelete(Array.from(selectedIds));
+            const res = await api.runDelete(Array.from(selectedIds), deleteRoles);
             setResult(res);
             setShowConfirm(false);
             // Refresh list
@@ -157,6 +158,7 @@ export default function Cleaner() {
                                                 <span className={`${styles.catName} ${c.managed ? '' : styles.foreign}`}>{c.name}</span>
                                                 <Badge tone="neutral">{t('clean.badgeCh', { n: c.childCount })}</Badge>
                                                 {c.managed && <Badge tone="accent">{t('clean.badgeMine')}</Badge>}
+                                                {(c.roleCount ?? 0) > 0 && <Badge tone="neutral">{t('clean.badgeRoles', { n: c.roleCount ?? 0 })}</Badge>}
                                             </div>
                                         </td>
                                         <td><code className={styles.catId}>{c.id}</code></td>
@@ -198,6 +200,20 @@ export default function Cleaner() {
                         <div className={styles.confirmWarn}>
                             {t('clean.confirm.warn')}
                         </div>
+                        {selectedCategories.some(c => (c.roleCount ?? 0) > 0) && (
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={deleteRoles}
+                                className={`${styles.managedToggle} ${deleteRoles ? styles.on : ''}`}
+                                onClick={() => setDeleteRoles(v => !v)}
+                                title={t('clean.deleteRolesHint')}
+                            >
+                                <span className={styles.switchDot} />
+                                {t('clean.deleteRoles')}
+                                {' '}({selectedCategories.reduce((a, c) => a + (c.roleCount ?? 0), 0)})
+                            </button>
+                        )}
                     </div>
                 </Modal>
             )}
@@ -223,7 +239,15 @@ export default function Cleaner() {
                                         <td><code className={styles.catId}>{r.categoryId}</code></td>
                                         <td className={styles.right}>
                                             {r.success ? (
-                                                <Badge tone="success">{t('common.success')}</Badge>
+                                                <>
+                                                    <Badge tone="success">{t('common.success')}</Badge>
+                                                    {(r.rolesDeleted ?? 0) > 0 && (
+                                                        <span className={styles.resultNote}>{t('clean.result.rolesDeleted', { n: r.rolesDeleted ?? 0 })}</span>
+                                                    )}
+                                                    {(r.roleErrors?.length ?? 0) > 0 && (
+                                                        <span className={styles.resultError}>{t('clean.result.roleErrors')}{r.roleErrors!.join(' / ')}</span>
+                                                    )}
+                                                </>
                                             ) : (
                                                 <>
                                                     <Badge tone="danger">{t('common.failure')}</Badge>

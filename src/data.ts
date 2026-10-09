@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Preset, Asset } from './types';
-import { PRESETS_FILE, ASSETS_DIR } from './paths';
+import { PRESETS_FILE, ASSETS_DIR, ROLES_FILE } from './paths';
 
 export const getPresets = (): Preset[] => {
     if (!fs.existsSync(PRESETS_FILE)) {
@@ -43,4 +43,28 @@ export const getAssetPath = (assetId: string): string | null => {
     const resolved = path.resolve(ASSETS_DIR, file);
     if (!resolved.startsWith(path.resolve(ASSETS_DIR) + path.sep)) return null;
     return resolved;
+};
+
+// Roles created together with a category: { [categoryId]: roleId[] }.
+// Used by the cleanup tab to delete a table's roles along with its category.
+type RoleRecord = Record<string, string[]>;
+
+const readRoleRecord = (): RoleRecord => {
+    try {
+        if (!fs.existsSync(ROLES_FILE)) return {};
+        const parsed = JSON.parse(fs.readFileSync(ROLES_FILE, 'utf-8') || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+};
+
+export const getCreatedRoles = (categoryId: string): string[] => readRoleRecord()[categoryId] ?? [];
+
+export const setCreatedRoles = (categoryId: string, roleIds: string[]): void => {
+    const rec = readRoleRecord();
+    if (roleIds.length > 0) rec[categoryId] = roleIds;
+    else delete rec[categoryId];
+    fs.mkdirSync(path.dirname(ROLES_FILE), { recursive: true });
+    fs.writeFileSync(ROLES_FILE, JSON.stringify(rec, null, 2));
 };

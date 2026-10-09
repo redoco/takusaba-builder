@@ -150,7 +150,14 @@ app.post('/api/presets', (req, res) => {
             (preset.presetId === undefined || (typeof preset.presetId === 'string' && /^[\w-]{1,64}$/.test(preset.presetId))) &&
             (preset.presetName === undefined || (typeof preset.presetName === 'string' && preset.presetName.length <= 30)) &&
             (preset.channels === undefined || Array.isArray(preset.channels)) &&
-            (preset.posts === undefined || Array.isArray(preset.posts));
+            (preset.posts === undefined || Array.isArray(preset.posts)) &&
+            (preset.roleCharacters === undefined || (
+                Array.isArray(preset.roleCharacters) && preset.roleCharacters.length <= 50 &&
+                preset.roleCharacters.every((c: any) =>
+                    c !== null && typeof c === 'object' &&
+                    typeof c.name === 'string' && c.name.length <= 80 &&
+                    (c.channelKey === undefined || typeof c.channelKey === 'string'))
+            ));
         if (!valid) return res.status(400).json({ error: 'INVALID_PRESET' });
         if (!preset.presetId) preset.presetId = randomUUID();
         if (!preset.channels) preset.channels = [];
@@ -211,7 +218,7 @@ app.post('/api/assets/upload', (req, res) => {
 // Run Operations
 app.post('/api/run/create', async (req, res) => {
     try {
-        const { presetId, categoryName, memberIds, hiddenAccess } = req.body ?? {};
+        const { presetId, categoryName, memberIds, hiddenAccess, roles } = req.body ?? {};
         if (
             typeof presetId !== 'string' ||
             typeof categoryName !== 'string' || categoryName.length < 1 || categoryName.length > 100 ||
@@ -232,7 +239,40 @@ app.post('/api/run/create', async (req, res) => {
             return res.status(400).json({ error: 'INVALID_FIELDS' });
         }
 
-        const result = await operations.runCreate(presetId, categoryName, memberIds, hiddenAccess ?? {});
+        // roles: { items: [{ kind, name, memberIds, channelKey? }], anchorRoleId }
+        const ROLE_KINDS = ['gm', 'pl', 'watch', 'character'];
+        const hiddenKeys = new Set(
+            (data.getPresets().find(p => p.presetId === presetId)?.channels ?? []).filter(c => c.isHidden).map(c => c.key)
+        );
+        const rolesValid =
+            roles === undefined || roles === null ||
+            (typeof roles === 'object' &&
+                Array.isArray(roles.items) && roles.items.length <= 50 &&
+                (roles.anchorRoleId === undefined || roles.anchorRoleId === null || isSnowflake(roles.anchorRoleId)) &&
+                roles.items.every((it: any) =>
+                    it !== null && typeof it === 'object' &&
+                    ROLE_KINDS.includes(it.kind) &&
+                    typeof it.name === 'string' && it.name.trim().length >= 1 && it.name.length <= 100 &&
+                    Array.isArray(it.memberIds) && it.memberIds.every((id: unknown) => isSnowflake(id) && memberIds.includes(id)) &&
+                    (it.channelKey === undefined || (it.kind === 'character' && typeof it.channelKey === 'string' && hiddenKeys.has(it.channelKey)))
+                ) &&
+                ['gm', 'pl', 'watch'].every(k => roles.items.filter((it: any) => it.kind === k).length <= 1));
+        if (!rolesValid) {
+            return res.status(400).json({ error: 'INVALID_FIELDS' });
+        }
+        const roleOptions = roles
+            ? {
+                items: roles.items.map((it: any) => ({
+                    kind: it.kind,
+                    name: it.name.trim(),
+                    memberIds: it.memberIds,
+                    ...(it.channelKey ? { channelKey: it.channelKey } : {})
+                })),
+                anchorRoleId: roles.anchorRoleId ?? null
+            }
+            : null;
+
+        const result = await operations.runCreate(presetId, categoryName, memberIds, hiddenAccess ?? {}, roleOptions);
         res.json(result);
     } catch (e: any) {
         console.error("Create run failed:", e);
@@ -242,7 +282,7 @@ app.post('/api/run/create', async (req, res) => {
 
 app.post('/api/run/delete', async (req, res) => {
     try {
-        const { categoryIds } = req.body ?? {};
+        const { categoryIds, deleteRoles } = req.body ?? {};
         if (
             !Array.isArray(categoryIds) || categoryIds.length < 1 ||
             categoryIds.length > 100 || !categoryIds.every(isSnowflake)
@@ -250,7 +290,7 @@ app.post('/api/run/delete', async (req, res) => {
             return res.status(400).json({ error: 'INVALID_CATEGORY_IDS' });
         }
 
-        const result = await operations.runDelete(categoryIds);
+        const result = await operations.runDelete(categoryIds, deleteRoles === true);
         res.json(result);
     } catch (e: any) {
         console.error("Delete run failed:", e);
@@ -291,6 +331,15 @@ app.get('/api/guild/members', async (req, res) => {
         res.json(members);
     } catch (e: any) {
         console.error("Fetch members failed:", e);
+        sendError(res, e);
+    }
+});
+
+app.get('/api/guild/roles', async (req, res) => {
+    try {
+        res.json(await operations.getGuildRoles());
+    } catch (e: any) {
+        console.error("Fetch roles failed:", e);
         sendError(res, e);
     }
 });

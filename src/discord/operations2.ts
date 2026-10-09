@@ -138,27 +138,67 @@ export const getGuildRoles = async () => {
     };
 };
 
-/** newIds（上から順）を anchor のすぐ下（anchor が null なら一番下）に並べ替える */
+/** newIds（上から順）が並び順の中で途切れずに続いていて、anchor のすぐ下にあるか */
+const isPlacedTogether = (roles: any[], newIds: string[], aboveId: string | null) => {
+    const order = sortRolesTopDown(roles).map((r: any) => r.id);
+    const start = order.indexOf(newIds[0]);
+    if (start < 0) return false;
+    for (let k = 0; k < newIds.length; k++) if (order[start + k] !== newIds[k]) return false;
+    return aboveId === null ? start === 0 : order[start - 1] === aboveId;
+};
+
+/**
+ * newIds（上から順）を anchor のすぐ下（anchor が null なら一番下）にまとめて並べる。
+ *
+ * Discord は作ったばかりのロールを position=1 にし、既存ロールの番号をずらさないことがある
+ * （同じ番号のロールが複数できる）。番号が変わらないロールを送らずにいると、同じ番号どうしが
+ * 交互に並んでしまう（キャラクターロールが他のロールの間にバラバラに入る原因）。
+ * そこで Bot が動かせるロール（Bot の一番上のロールより下）をすべて送り、1 から連番で振り直す。
+ */
 const placeRoles = async (newIds: string[], anchorRoleId: string | null) => {
+    if (newIds.length === 0) return;
     const guildId = getGuildId();
-    const all = (await fetchRoles()).filter((r: any) => r.id !== guildId);
-    const newSet = new Set(newIds);
-    const order = sortRolesTopDown(all).filter((r: any) => !newSet.has(r.id));
-    let idx = order.length;
-    if (anchorRoleId) {
-        const i = order.findIndex((r: any) => r.id === anchorRoleId);
-        if (i < 0) throw new Error('指定したロールがサーバーに見つかりません');
-        idx = i + 1;
+    const botUser: any = await getBotUser();
+    const botMember: any = await getBotMember(botUser.id);
+    const botRoleIds = new Set<string>(botMember.roles ?? []);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const all = (await fetchRoles()).filter((r: any) => r.id !== guildId);
+        const sorted = sortRolesTopDown(all);
+        // Bot の一番上のロール（並び順で最初に出てくる Bot のロール）より下だけが動かせる
+        const botTopIdx = sorted.findIndex((r: any) => botRoleIds.has(r.id));
+        const movable = sorted.slice(botTopIdx + 1); // botTopIdx が -1 なら全部
+        const newSet = new Set(newIds);
+        const others = movable.filter((r: any) => !newSet.has(r.id)).map((r: any) => r.id as string);
+
+        let idx = 0;
+        if (anchorRoleId) {
+            const i = others.indexOf(anchorRoleId);
+            const j = sorted.findIndex((r: any) => r.id === anchorRoleId);
+            if (i >= 0) idx = i + 1;
+            else if (j >= 0 && j <= botTopIdx) idx = 0; // Bot のロール（かそれより上）の直下 ＝ 動かせる範囲の一番上
+            else throw new Error('指定したロールがサーバーに見つかりません');
+        } else {
+            idx = others.length;
+        }
+
+        const finalIds = [...others.slice(0, idx), ...newIds, ...others.slice(idx)];
+        // 新しいロールのすぐ上に来るはずのロール
+        const aboveId = idx > 0 ? others[idx - 1] : (botTopIdx >= 0 ? sorted[botTopIdx].id : null);
+        const n = finalIds.length;
+        const botTopPos = botTopIdx >= 0 ? sorted[botTopIdx].position : Infinity;
+        if (attempt === 0 && n >= botTopPos) {
+            // 番号が重複していて、1 から振り直すと Bot のロールの番号に届いてしまう。
+            // いったん新しいロールだけを送って Discord に番号を整理させ、もう一度やり直す
+            await setRolePositions(newIds.map(id => ({ id, position: all.find((r: any) => r.id === id)?.position ?? 1 })));
+            continue;
+        }
+        await setRolePositions(finalIds.map((id, i) => ({ id, position: n - i })));
+
+        const after = (await fetchRoles()).filter((r: any) => r.id !== guildId);
+        if (isPlacedTogether(after, newIds, aboveId)) return;
     }
-    const finalIds = [...order.slice(0, idx).map((r: any) => r.id), ...newIds, ...order.slice(idx).map((r: any) => r.id)];
-    const current = new Map(all.map((r: any) => [r.id, r.position]));
-    const n = finalIds.length;
-    // 指定位置より上のロールは動かさない（Bot より上のロールは触れないため）
-    const payload = finalIds
-        .map((id, i) => ({ id, position: n - i, i }))
-        .filter(p => p.i >= idx && current.get(p.id) !== p.position)
-        .map(({ id, position }) => ({ id, position }));
-    if (payload.length > 0) await setRolePositions(payload);
+    throw new Error('ロールをまとめて並べられませんでした。Discord のサーバー設定でロールの並び順を確認してください');
 };
 
 type Overwrite = { id: string, type: 0 | 1, allow?: string, deny?: string };
@@ -290,8 +330,14 @@ export const runCreate = async (
         };
         const fallback = (tier: RoleKind) => memberIds.filter(uid => tierOf.get(uid) === tier && needsFallback(uid));
 
-        const buildOverwrites = (opts: { hiddenKey?: string, voice: boolean, speakDeny: boolean }): Overwrite[] => {
+        const buildOverwrites = (opts: { hiddenKey?: string, voice: boolean, speakDeny: boolean, isCategory?: boolean }): Overwrite[] => {
             const list: Overwrite[] = [everyoneDeny, botAllow];
+            if (opts.isCategory) {
+                // キャラクターロールもカテゴリの権限に入れておく。GM・PL・観戦と同じ「この卓のロール」として
+                // カテゴリに紐づくので、マダミナリンクなど他の Bot の削除コマンドでも一緒に消えるようになる。
+                // （中のチャンネルはそれぞれ個別に権限を設定しているので、カテゴリが見えるだけで他に影響はない）
+                for (const c of created) if (c.spec.kind === 'character') list.push(allow(c.id, 0, VIEW_CHANNEL));
+            }
             if (gm) list.push(allow(gm.id, 0, GM_BITS));
             list.push(...fallback('gm').map(uid => allow(uid, 1, PL_BITS)));
             if (opts.hiddenKey !== undefined) {
@@ -311,7 +357,7 @@ export const runCreate = async (
             return mergeOverwrites(list);
         };
 
-        const cat: any = await createCategory(categoryName, buildOverwrites({ voice: false, speakDeny: false }));
+        const cat: any = await createCategory(categoryName, buildOverwrites({ voice: false, speakDeny: false, isCategory: true }));
         result.category.id = cat.id;
         if (createdRoleIds.length > 0) {
             try {

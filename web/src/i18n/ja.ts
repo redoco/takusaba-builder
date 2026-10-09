@@ -143,7 +143,7 @@ export const ja = {
     'run.roles.watch': "観戦",
     'run.roles.watchName': "観戦",
     'run.roles.chars': "キャラクター",
-    'run.roles.charsHint': "ロール名は「絵文字＋番号＋名前」になります（例：🍎⑴アダム）。担当が決まっていなければ空欄のままで大丈夫です。",
+    'run.roles.charsHint': "ロール名は「絵文字＋番号＋名前」になります（例：🍎⑴アダム）。担当が決まっていなければ空欄のままで大丈夫です。キャラクター名が入った秘匿チャンネル（例：「アダム」→「⑴アダム」）があれば自動で選ばれます。",
     'run.roles.charNamePh': "キャラクター名",
     'run.roles.charChannel': "見られる秘匿チャンネル",
     'run.roles.charChannelNone': "なし",

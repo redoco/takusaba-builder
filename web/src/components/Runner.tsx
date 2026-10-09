@@ -9,7 +9,7 @@ import Textarea from '../ui/Textarea';
 import Field from '../ui/Field';
 import PresetPicker from './PresetPicker';
 import RolePlanner from './RolePlanner';
-import { charNumber, clampRoleName, type CharacterDraft, type Tier } from './roleNames';
+import { charNumber, clampRoleName, matchChannelForCharacter, type CharacterDraft, type Tier } from './roleNames';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
 import Badge from '../ui/Badge';
@@ -39,13 +39,18 @@ const saveRolePrefs = (p: RolePrefs) => {
     try { localStorage.setItem(ROLE_PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
 };
 
-const charactersFromPreset = (preset: Preset | undefined): CharacterDraft[] =>
-    (preset?.roleCharacters ?? []).map(c => ({
+const charactersFromPreset = (preset: Preset | undefined): CharacterDraft[] => {
+    const hidden = (preset?.channels ?? []).filter(ch => ch.isHidden);
+    return (preset?.roleCharacters ?? []).map(c => ({
         id: crypto.randomUUID(),
         name: c.name,
-        channelKey: c.channelKey && preset?.channels.some(ch => ch.key === c.channelKey && ch.isHidden) ? c.channelKey : '',
+        // 保存されたチャンネルがなければ、名前がリンクしている秘匿チャンネルを自動で選ぶ
+        channelKey: c.channelKey && hidden.some(ch => ch.key === c.channelKey)
+            ? c.channelKey
+            : matchChannelForCharacter(c.name, hidden),
         memberId: ''
     }));
+};
 
 export default function Runner({ guildId }: { guildId: string }) {
     const toast = useToast();

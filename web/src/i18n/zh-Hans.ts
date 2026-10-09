@@ -138,7 +138,7 @@ export const zhHans: Messages = {
     'run.roles.watch': "观战",
     'run.roles.watchName': "观战",
     'run.roles.chars': "角色",
-    'run.roles.charsHint': "身份组名称为“表情＋编号＋名字”（例：🍎⑴亚当）。未决定玩家时可留空。",
+    'run.roles.charsHint': "身份组名称为“表情＋编号＋名字”（例：🍎⑴亚当）。未决定玩家时可留空。名称包含角色名的秘密频道会被自动选中。",
     'run.roles.charNamePh': "角色名",
     'run.roles.charChannel': "可查看的秘密频道",
     'run.roles.charChannelNone': "无",

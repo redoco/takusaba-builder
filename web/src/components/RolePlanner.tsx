@@ -9,7 +9,7 @@ import Card from '../ui/Card';
 import Avatar from '../ui/Avatar';
 import Callout from '../ui/Callout';
 import { useI18n } from '../i18n';
-import { EMOJI_CHOICES, charNumber, type CharacterDraft, type Tier } from './roleNames';
+import { EMOJI_CHOICES, charNumber, matchChannelForCharacter, type CharacterDraft, type Tier } from './roleNames';
 import styles from './RolePlanner.module.css';
 
 type Props = {
@@ -46,6 +46,13 @@ export default function RolePlanner(p: Props) {
 
     const updateChar = (id: string, patch: Partial<CharacterDraft>) =>
         p.onCharacters(p.characters.map(c => (c.id === id ? { ...c, ...patch } : c)));
+    // 名前を変えたとき、名前がリンクしている秘匿チャンネルを自動で選ぶ。
+    // 自分で別のチャンネルを選んでいた場合はそのままにする。
+    const renameChar = (c: CharacterDraft, name: string) => {
+        const before = matchChannelForCharacter(c.name, p.hiddenChannels);
+        const auto = c.channelKey === '' || c.channelKey === before;
+        updateChar(c.id, auto ? { name, channelKey: matchChannelForCharacter(name, p.hiddenChannels) } : { name });
+    };
     const addChar = () =>
         p.onCharacters([...p.characters, { id: crypto.randomUUID(), name: '', channelKey: '', memberId: '' }]);
     const removeChar = (id: string) => p.onCharacters(p.characters.filter(c => c.id !== id));
@@ -183,7 +190,7 @@ export default function RolePlanner(p: Props) {
                                         <span className={styles.charNo}>{numbers[i]}</span>
                                         <Input
                                             value={c.name}
-                                            onChange={e => updateChar(c.id, { name: e.target.value })}
+                                            onChange={e => renameChar(c, e.target.value)}
                                             placeholder={t('run.roles.charNamePh')}
                                             maxLength={80}
                                             aria-label={t('run.roles.charNamePh')}

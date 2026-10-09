@@ -138,7 +138,7 @@ export const ko: Messages = {
     'run.roles.watch': "관전",
     'run.roles.watchName': "관전",
     'run.roles.chars': "캐릭터",
-    'run.roles.charsHint': "역할 이름은 \"이모지+번호+이름\"이 됩니다(예: 🍎⑴아담). 담당이 정해지지 않았다면 비워 두어도 됩니다.",
+    'run.roles.charsHint': "역할 이름은 \"이모지+번호+이름\"이 됩니다(예: 🍎⑴아담). 담당이 정해지지 않았다면 비워 두어도 됩니다. 캐릭터 이름이 들어간 비밀 채널이 있으면 자동으로 선택됩니다.",
     'run.roles.charNamePh': "캐릭터 이름",
     'run.roles.charChannel': "볼 수 있는 비밀 채널",
     'run.roles.charChannelNone': "없음",

@@ -138,7 +138,7 @@ export const en: Messages = {
     'run.roles.watch': "Spectator",
     'run.roles.watchName': "Spectator",
     'run.roles.chars': "Characters",
-    'run.roles.charsHint': "Role names become \"emoji + number + name\" (e.g. 🍎⑴Adam). Leave the player empty if not decided yet.",
+    'run.roles.charsHint': "Role names become \"emoji + number + name\" (e.g. 🍎⑴Adam). Leave the player empty if not decided yet. A secret channel whose name contains the character name is picked automatically.",
     'run.roles.charNamePh': "Character name",
     'run.roles.charChannel': "Secret channel it can see",
     'run.roles.charChannelNone': "None",

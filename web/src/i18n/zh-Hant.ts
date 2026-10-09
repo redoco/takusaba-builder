@@ -138,7 +138,7 @@ export const zhHant: Messages = {
     'run.roles.watch': "觀戰",
     'run.roles.watchName': "觀戰",
     'run.roles.chars': "角色",
-    'run.roles.charsHint': "身分組名稱為「表情＋編號＋名字」（例：🍎⑴亞當）。尚未決定玩家時可留空。",
+    'run.roles.charsHint': "身分組名稱為「表情＋編號＋名字」（例：🍎⑴亞當）。尚未決定玩家時可留空。名稱包含角色名的秘密頻道會被自動選取。",
     'run.roles.charNamePh': "角色名",
     'run.roles.charChannel': "可檢視的秘密頻道",
     'run.roles.charChannelNone': "無",

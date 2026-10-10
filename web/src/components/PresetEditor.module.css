@@ -138,6 +138,7 @@
 
 .channelRow {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
@@ -278,4 +279,51 @@
     font-size: var(--fs-xs);
     color: var(--fg-3);
     flex-shrink: 0;
+}
+
+/* チャンネルごとの権限（GM / PL / 観戦） */
+.accessLine {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    padding: 2px 0 2px 26px;
+    font-size: var(--fs-xs);
+    color: var(--fg-2);
+}
+
+.accessItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.accessWho {
+    color: var(--fg-1);
+    font-weight: 600;
+}
+
+.accessFixed {
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    background: var(--bg-1);
+}
+
+.accessSelect {
+    width: 128px;
+}
+
+.accessSelect select {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    font-size: var(--fs-xs);
+}
+
+.lv_none select {
+    color: var(--fg-3);
+}
+
+.accessNote {
+    color: var(--fg-3);
 }

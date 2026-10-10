@@ -1,8 +1,17 @@
+/** write = 見える・書き込める（ボイスは話せる）／ read = 見るだけ（ボイスは聞くだけ）／ none = 見えない */
+export type AccessLevel = 'write' | 'read' | 'none';
+
 export interface PresetChannel {
     key: string;
     name: string;
     type?: 'text' | 'voice';
     isHidden?: boolean;
+    /**
+     * PL・観戦がこのチャンネルでできること（GM はいつでも書き込める）。
+     * 未設定ならチャンネル名から推測した既定値（channelAccess.ts の defaultAccess）。
+     * キャラクターロールは、秘匿チャンネルでは紐づけたものだけ書き込め、それ以外のチャンネルでは PL と同じ。
+     */
+    access?: { pl?: AccessLevel, watch?: AccessLevel };
 }
 
 export interface PresetPostItem {

@@ -3,7 +3,8 @@ import {
     Plus, Copy, Trash2, GripVertical, Hash, Volume2, Lock, Unlock,
     X, Type, ImagePlus, Save, LayoutList, MousePointerClick
 } from 'lucide-react';
-import type { Preset, PresetPostItem } from '../types';
+import type { Preset, PresetPostItem, AccessLevel } from '../types';
+import { channelAccess, ACCESS_LEVELS } from './channelAccess';
 import * as api from '../api';
 import * as editor from './presetEditorState';
 import Button from '../ui/Button';
@@ -332,6 +333,37 @@ export default function PresetEditor() {
                                                     <IconButton tone="danger" title={t('preset.delete')} onClick={() => setConfirmDeleteChannel(idx)}>
                                                         <Trash2 size={16} />
                                                     </IconButton>
+                                                    {(() => {
+                                                        const acc = channelAccess(ch);
+                                                        const voice = ch.type === 'voice';
+                                                        const label = (lv: AccessLevel) => t(`preset.access.${voice ? 'voice' : 'text'}.${lv}` as 'preset.access.text.write');
+                                                        const setLevel = (who: 'pl' | 'watch', lv: AccessLevel) =>
+                                                            setEditingPreset(p => p && editor.updateChannel(p, idx, { access: { ...acc, [who]: lv } }));
+                                                        return (
+                                                            <div className={styles.accessLine}>
+                                                                <span className={styles.accessItem}>
+                                                                    <span className={styles.accessWho}>GM</span>
+                                                                    <span className={styles.accessFixed}>{label('write')}</span>
+                                                                </span>
+                                                                {(['pl', 'watch'] as const).map(who => (
+                                                                    <span key={who} className={styles.accessItem}>
+                                                                        <span className={styles.accessWho}>{t(who === 'pl' ? 'preset.access.pl' : 'preset.access.watch')}</span>
+                                                                        <Select
+                                                                            className={`${styles.accessSelect} ${styles[`lv_${acc[who]}`]}`}
+                                                                            value={acc[who]}
+                                                                            onChange={e => setLevel(who, e.target.value as AccessLevel)}
+                                                                            aria-label={t(who === 'pl' ? 'preset.access.pl' : 'preset.access.watch')}
+                                                                        >
+                                                                            {ACCESS_LEVELS.map(lv => <option key={lv} value={lv}>{label(lv)}</option>)}
+                                                                        </Select>
+                                                                    </span>
+                                                                ))}
+                                                                <span className={styles.accessNote}>
+                                                                    {ch.isHidden ? t('preset.access.charHidden') : t('preset.access.charSame')}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             ))}
                                         </div>

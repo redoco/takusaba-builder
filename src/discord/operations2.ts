@@ -24,6 +24,8 @@ import {
     SPEAK
 } from './permissions';
 import fs from 'fs';
+import { channelAccess } from '../channelAccess';
+import type { AccessLevel } from '../types';
 
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 20;
@@ -330,34 +332,53 @@ export const runCreate = async (
         };
         const fallback = (tier: RoleKind) => memberIds.filter(uid => tierOf.get(uid) === tier && needsFallback(uid));
 
-        const buildOverwrites = (opts: { hiddenKey?: string, voice: boolean, speakDeny: boolean, isCategory?: boolean }): Overwrite[] => {
+        // 立場ごとの権限：write = 見える・書き込める／read = 見るだけ（ボイスは聞くだけ）／none = 見えない
+        const levelOw = (id: string, type: 0 | 1, level: AccessLevel, voice: boolean, speakDeny: boolean): Overwrite | null =>
+            level === 'write' ? allow(id, type, PL_BITS | READ_MESSAGE_HISTORY)
+                : level === 'read' ? watchOw(id, type, voice, speakDeny)
+                    : null;
+        const push = (list: Overwrite[], o: Overwrite | null) => { if (o) list.push(o); };
+
+        const buildOverwrites = (opts: {
+            access: { pl: AccessLevel, watch: AccessLevel },
+            hiddenKey?: string,
+            voice: boolean,
+            speakDeny: boolean,
+            isCategory?: boolean
+        }): Overwrite[] => {
+            const { voice, speakDeny } = opts;
             const list: Overwrite[] = [everyoneDeny, botAllow];
-            if (opts.isCategory) {
-                // キャラクターロールもカテゴリの権限に入れておく。GM・PL・観戦と同じ「この卓のロール」として
-                // カテゴリに紐づくので、マダミナリンクなど他の Bot の削除コマンドでも一緒に消えるようになる。
-                // （中のチャンネルはそれぞれ個別に権限を設定しているので、カテゴリが見えるだけで他に影響はない）
-                for (const c of created) if (c.spec.kind === 'character') list.push(allow(c.id, 0, VIEW_CHANNEL));
-            }
+            // GM：いつでも見える・書き込める
             if (gm) list.push(allow(gm.id, 0, GM_BITS));
             list.push(...fallback('gm').map(uid => allow(uid, 1, PL_BITS)));
+
+            // PL
+            if (pl) push(list, levelOw(pl.id, 0, opts.access.pl, voice, speakDeny));
+            for (const uid of fallback('pl')) push(list, levelOw(uid, 1, opts.access.pl, voice, speakDeny));
+
+            // 観戦
+            if (watch) push(list, levelOw(watch.id, 0, opts.access.watch, voice, speakDeny));
+            for (const uid of fallback('watch')) push(list, levelOw(uid, 1, opts.access.watch, voice, speakDeny));
+
+            // キャラクター：秘匿チャンネルは紐づけたキャラクターだけ書き込める。それ以外のチャンネルは PL と同じ。
+            // カテゴリにも必ず入れておく（GM・PL・観戦と同じ「この卓のロール」として紐づき、
+            // マダミナリンクなど他の Bot の削除コマンドでも一緒に消えるように）。
+            for (const c of created) {
+                if (c.spec.kind !== 'character') continue;
+                if (opts.isCategory) list.push(allow(c.id, 0, VIEW_CHANNEL));
+                else if (opts.hiddenKey !== undefined && c.spec.channelKey === opts.hiddenKey) list.push(allow(c.id, 0, PL_BITS | READ_MESSAGE_HISTORY));
+                else push(list, levelOw(c.id, 0, opts.access.pl, voice, speakDeny));
+            }
+
+            // 秘匿チャンネルで「閲覧者」に選んだ人
             if (opts.hiddenKey !== undefined) {
-                // 秘匿チャンネル：GM ＋ 閲覧者に選んだ人 ＋ 紐づけたキャラクターロール
-                const key = opts.hiddenKey;
                 const coveredByGm = (uid: string) => !!gm && gm.assigned.has(uid);
-                list.push(...(hiddenAccess[key] ?? []).filter(uid => !coveredByGm(uid)).map(uid => allow(uid, 1, PL_BITS)));
-                for (const c of created) {
-                    if (c.spec.kind === 'character' && c.spec.channelKey === key) list.push(allow(c.id, 0, PL_BITS));
-                }
-            } else {
-                if (pl) list.push(allow(pl.id, 0, PL_BITS));
-                list.push(...fallback('pl').map(uid => allow(uid, 1, PL_BITS)));
-                if (watch) list.push(watchOw(watch.id, 0, opts.voice, opts.speakDeny));
-                list.push(...fallback('watch').map(uid => watchOw(uid, 1, opts.voice, opts.speakDeny)));
+                list.push(...(hiddenAccess[opts.hiddenKey] ?? []).filter(uid => !coveredByGm(uid)).map(uid => allow(uid, 1, PL_BITS)));
             }
             return mergeOverwrites(list);
         };
 
-        const cat: any = await createCategory(categoryName, buildOverwrites({ voice: false, speakDeny: false, isCategory: true }));
+        const cat: any = await createCategory(categoryName, buildOverwrites({ access: { pl: 'write', watch: 'read' }, voice: false, speakDeny: false, isCategory: true }));
         result.category.id = cat.id;
         if (createdRoleIds.length > 0) {
             try {
@@ -367,7 +388,6 @@ export const runCreate = async (
             }
         }
 
-        const hasWatchers = !!watch || fallback('watch').length > 0;
 
         for (const ch of preset.channels) {
             try {
@@ -375,15 +395,16 @@ export const runCreate = async (
                 const topic = `managed_by=local_preset_tool; preset=${presetId}; created=${nowProp}`;
                 const isVoice = ch.type === 'voice';
                 const hiddenKey = ch.isHidden ? ch.key : undefined;
+                const access = channelAccess(ch);
 
                 const channelType = isVoice ? 2 : 0;
                 let channel: any;
                 try {
-                    channel = await createChannel(ch.name, cat.id, buildOverwrites({ hiddenKey, voice: isVoice, speakDeny: true }), topic, channelType);
+                    channel = await createChannel(ch.name, cat.id, buildOverwrites({ access, hiddenKey, voice: isVoice, speakDeny: true }), topic, channelType);
                 } catch (e: any) {
                     // Bot 自身に「発言」権限がないと SPEAK の拒否を設定できない → 外して再試行
-                    if (isVoice && hasWatchers && !ch.isHidden && isMissingPerms(e)) {
-                        channel = await createChannel(ch.name, cat.id, buildOverwrites({ hiddenKey, voice: true, speakDeny: false }), topic, channelType);
+                    if (isVoice && (access.watch === 'read' || access.pl === 'read') && isMissingPerms(e)) {
+                        channel = await createChannel(ch.name, cat.id, buildOverwrites({ access, hiddenKey, voice: true, speakDeny: false }), topic, channelType);
                         result.errors.push(`ボイスチャンネル「${ch.name}」：Botに「発言」権限がないため、観戦の発言禁止を設定できませんでした`);
                     } else {
                         throw e;
